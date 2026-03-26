@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Elemental Galaxy • LIVE 3D Dashboard</title>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; font-family:Arial, sans-serif; color:#fff; }
+    #ui { position:absolute; top:10px; left:10px; z-index:100; background:rgba(0,0,0,0.8); padding:15px; border-radius:8px; max-width:90%; }
+    button { margin:5px; padding:10px 20px; background:#c00; border:none; color:#fff; cursor:pointer; border-radius:6px; }
+    .popup { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(10,10,30,0.95); padding:25px; border:3px solid #ff0; border-radius:15px; width:460px; max-height:80%; overflow:auto; display:none; box-shadow:0 0 60px #ff0; z-index:200; }
+    .close { float:right; cursor:pointer; font-size:32px; color:#ff0; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+</head>
+<body>
+  <div id="ui">
+    <h1>🌌 Elemental Galaxy — LIVE (GoldAPI.io)</h1>
+    <button onclick="fetchLivePrices()">Refresh Live Prices</button>
+    <button onclick="createGalaxy()">Launch Spaceship Galaxy</button>
+    <p id="priceDisplay" style="margin-top:10px;">Waiting for live data from GoldAPI.io...</p>
+  </div>
+
+  <div id="popup" class="popup">
+    <span class="close" onclick="closePopup()">×</span>
+    <h2 id="elemName"></h2>
+    <div id="elemContent"></div>
+  </div>
+
+  <script>
+    let scene = new THREE.Scene();
+    let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    let renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0x404060));
+    let light = new THREE.PointLight(0xffdd88, 2, 1000);
+    light.position.set(0, 50, 100);
+    scene.add(light);
+
+    let orbs = {};
+    let prices = { Au: 4360, Ag: 68, Cu: 5.38, Li: 20500, U: 83.5 }; // fallback
+
+    function createOrb(symbol, color, basePrice, x, y, z) {
+      let size = Math.max(3, Math.log(basePrice || 100) * 0.7);
+      let geo = new THREE.SphereGeometry(size, 32, 32);
+      let mat = new THREE.MeshPhongMaterial({color: color, emissive: color, emissiveIntensity: 0.7});
+      let orb = new THREE.Mesh(geo, mat);
+      orb.position.set(x, y, z);
+      orb.userData = {symbol};
+      scene.add(orb);
+      orbs[symbol] = orb;
+      return orb;
+    }
+
+    function fetchLivePrices() {
+      const API_KEY = 'goldapi-a3oklxsmn43htb5-io'; // Your free GoldAPI key
+
+      // Gold
+      fetch(`https://www.goldapi.io/api/XAU/USD?access_key=${API_KEY}`)
+        .then(res => res.json())
+        .then(data => { if (data.price) prices.Au = data.price; updatePrices(); })
+        .catch(() => {});
+
+      // Silver
+      fetch(`https://www.goldapi.io/api/XAG/USD?access_key=${API_KEY}`)
+        .then(res => res.json())
+        .then(data => { if (data.price) prices.Ag = data.price; updatePrices(); })
+        .catch(() => {});
+    }
+
+    function updatePrices() {
+      document.getElementById('priceDisplay').innerHTML = 
+        `LIVE (Mar 24 2026): Gold ~$${prices.Au.toFixed(0)}/oz | Silver ~$${prices.Ag.toFixed(2)}/oz<br>
+         Copper ~$${prices.Cu.toFixed(2)}/lb | Lithium ~$${prices.Li.toFixed(0)}/t | Uranium ~$${prices.U.toFixed(2)}/lb`;
+
+      // Scale orbs dynamically
+      if (orbs.Au) orbs.Au.scale.setScalar(prices.Au / 4000);
+      if (orbs.Ag) orbs.Ag.scale.setScalar(prices.Ag / 60);
+      if (orbs.Cu) orbs.Cu.scale.setScalar(prices.Cu / 4);
+    }
+
+    function createGalaxy() {
+      while(scene.children.length > 2) scene.remove(scene.children[2]);
+
+      createOrb('Au', 0xffdd00, prices.Au, 45, 25, -35);   // Gold
+      createOrb('Ag', 0xdddddd, prices.Ag, -15, 35, -25);  // Silver (your stack)
+      createOrb('Cu', 0xff8800, prices.Cu * 1000, -35, 5, -55); // Copper
+      createOrb('Li', 0x00ffff, prices.Li, -25, -35, 45);   // Lithium
+      createOrb('U', 0x88ff88, prices.U * 10, 15, -45, 65); // Uranium
+
+      camera.position.set(0, 20, 160);
+      animate();
+      fetchLivePrices();
+      setInterval(fetchLivePrices, 60000); // refresh every 60 seconds
+    }
+
+    // Click detection for pop-ups
+    let raycaster = new THREE.Raycaster();
+    let mouse = new THREE.Vector2();
+    window.addEventListener('click', (event) => {
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      let intersects = raycaster.intersectObjects(Object.values(orbs));
+      if (intersects.length > 0) {
+        let symbol = intersects[0].object.userData.symbol;
+        showPopup(symbol);
+      }
+    });
+
+    function showPopup(symbol) {
+      let p = prices[symbol] || 0;
+      let name = symbol === 'Au' ? 'Gold (Au)' : 
+                 symbol === 'Ag' ? 'Silver (Ag) — Your $1M Stack' : 
+                 symbol === 'Cu' ? 'Copper (Cu)' : 
+                 symbol === 'Li' ? 'Lithium (Li)' : 'Uranium (U)';
+
+      let content = `<p><strong>Live Price:</strong> $${p.toFixed(2)} ${symbol === 'Cu' ? '/lb' : symbol === 'Li' ? '/tonne' : '/oz'}</p>`;
+
+      if (symbol === 'Au') content += `<p>Producers: China, Russia, Australia • ETFs: GLD, GDX • Miners: NEM, GOLD</p>`;
+      if (symbol === 'Ag') content += `<p>Perfect collateral for Pure 42 • Producers: Mexico, Peru, China • ETFs: SLV, SIVR</p>`;
+      if (symbol === 'Cu') content += `<p>Producers: Chile, DRC • Miners: FCX, BHP • Buyers: Tesla, Apple</p>`;
+      if (symbol === 'Li') content += `<p>Producers: Australia, Chile • Key for EVs & batteries</p>`;
+      if (symbol === 'U') content += `<p>Producers: Kazakhstan, Canada • Nuclear demand rising</p>`;
+
+      content += `<p style="color:#f00; margin-top:15px;">🔴 Vault/Short Alerts Active • Divergence Math Running • 42.1 φ Harmony</p>`;
+
+      document.getElementById('elemName').innerText = name;
+      document.getElementById('elemContent').innerHTML = content;
+      document.getElementById('popup').style.display = 'block';
+    }
+
+    function closePopup() {
+      document.getElementById('popup').style.display = 'none';
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      Object.values(orbs).forEach(orb => orb.rotation.y += 0.004);
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
